@@ -1,17 +1,17 @@
 package com.securesoft.pay;
 
 import android.content.Context;
-import android.net.Uri;
+import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 
 import androidx.annotation.NonNull;
-import androidx.browser.customtabs.CustomTabsIntent;
 
 import com.securesoft.pay.internal.ApiClient;
 import com.securesoft.pay.internal.ApiService;
 import com.securesoft.pay.internal.InitiatePaymentRequestBody;
 import com.securesoft.pay.internal.InitiatePaymentResponse;
+import com.securesoft.pay.internal.PaymentActivity;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -21,7 +21,6 @@ public final class SecureSoftPay {
 
     private static SecureSoftPayConfig config;
     private static PaymentResultListener paymentCallback;
-
     private static final String CALLBACK_SCHEME = "com.securesoft.pay.callback";
     private static final String CALLBACK_HOST = "payment-result";
 
@@ -37,20 +36,8 @@ public final class SecureSoftPay {
             return;
         }
         paymentCallback = callback;
-
         ApiService apiService = ApiClient.create(config.baseUrl);
-
-        String successUrl = CALLBACK_SCHEME + "://" + CALLBACK_HOST + "/success";
-        String cancelUrl = CALLBACK_SCHEME + "://" + CALLBACK_HOST + "/cancel";
-
-        InitiatePaymentRequestBody requestBody = new InitiatePaymentRequestBody(
-                request.amount,
-                config.baseUrl,
-                request.customerName,
-                request.customerEmail,
-                successUrl,
-                cancelUrl
-        );
+        InitiatePaymentRequestBody requestBody = new InitiatePaymentRequestBody(request.amount, config.baseUrl, request.customerName, request.customerEmail, CALLBACK_SCHEME + "://" + CALLBACK_HOST + "/success", CALLBACK_SCHEME + "://" + CALLBACK_HOST + "/cancel");
 
         apiService.initiatePayment("Bearer " + config.apiKey, requestBody).enqueue(new Callback<InitiatePaymentResponse>() {
             @Override
@@ -59,7 +46,9 @@ public final class SecureSoftPay {
                     InitiatePaymentResponse body = response.body();
                     if (response.isSuccessful() && body != null && "success".equals(body.status)) {
                         if (body.paymentUrl != null && !body.paymentUrl.isEmpty()) {
-                            launchChromeCustomTab(context, body.paymentUrl);
+                            // ★★★ মূল পরিবর্তন এখানে ★★★
+                            // Chrome Custom Tab-এর পরিবর্তে আমাদের PaymentActivity চালু করা হচ্ছে
+                            launchPaymentActivity(context, body.paymentUrl);
                         } else {
                             onPaymentFailure("API did not return a valid payment_url.");
                         }
@@ -77,8 +66,6 @@ public final class SecureSoftPay {
         });
     }
 
-    // ★★★ পরিবর্তন এখানে ★★★
-    // মেথডগুলোকে 'public' করা হয়েছে
     public static void onPaymentSuccess(String transactionId) {
         if (paymentCallback != null) {
             paymentCallback.onSuccess(transactionId);
@@ -86,8 +73,6 @@ public final class SecureSoftPay {
         }
     }
 
-    // ★★★ পরিবর্তন এখানে ★★★
-    // মেথডগুলোকে 'public' করা হয়েছে
     public static void onPaymentFailure(String errorMessage) {
         if (paymentCallback != null) {
             paymentCallback.onFailure(errorMessage);
@@ -95,12 +80,14 @@ public final class SecureSoftPay {
         }
     }
 
-    private static void launchChromeCustomTab(Context context, String url) {
+    // ★★★ নতুন মেথড ★★★
+    private static void launchPaymentActivity(Context context, String url) {
         try {
-            CustomTabsIntent customTabsIntent = new CustomTabsIntent.Builder().build();
-            customTabsIntent.launchUrl(context, Uri.parse(url));
+            Intent intent = new Intent(context, PaymentActivity.class);
+            intent.putExtra(PaymentActivity.EXTRA_URL, url);
+            context.startActivity(intent);
         } catch (Exception e) {
-            onPaymentFailure("Could not open checkout page. A web browser is required.");
+            onPaymentFailure("Could not open payment page. Error: " + e.getMessage());
         }
     }
 }
